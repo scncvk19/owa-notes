@@ -1,0 +1,48 @@
+name: Publish OWA Notes Android Pre-Release
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - .github/workflows/publish-owa-notes-release.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download built APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: OWA-Notes-APK
+          path: release
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: 36477427827
+
+      - name: Verify APK
+        run: |
+          test -f release/OWA-Notes.apk
+          ls -lh release/OWA-Notes.apk
+          sha256sum release/OWA-Notes.apk
+
+      - name: Create GitHub pre-release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "v0.1.0-alpha" "release/OWA-Notes.apk#OWA-Notes.apk" \
+            --repo "${{ github.repository }}" \
+            --target "fdc9f0610055ceea90bfc2653d3b9cf212a52db0" \
+            --title "OWA Notes v0.1.0-alpha" \
+            --prerelease \
+            --notes "First OWA Notes Android test build.
+
+          Based on the open-source Joplin project.
+          Licensed under GNU AGPL-3.0-or-later.
+
+          This is a pre-release build intended for testing. It is signed with a development/debug signing key and is not a production Play Store release."

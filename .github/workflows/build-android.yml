@@ -6,7 +6,6 @@ on: [push, pull_request]
 
 jobs:
   AssembleRelease:
-    if: github.repository == 'laurent22/joplin'
     runs-on: ubuntu-latest
     steps:
       - name: Install Linux dependencies
@@ -82,3 +81,16 @@ jobs:
             exit 1
           fi
           "$ZIPALIGN_PATH" -c -P 16 -v 4 "$APK_FILE"
+
+      
+      - name: Prepare OWA Notes APK
+        run: |
+          mkdir -p artifacts
+          cp packages/app-mobile/android/app/build/outputs/apk/release/app-release.apk artifacts/OWA-Notes.apk
+
+      - name: Upload OWA Notes APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: OWA-Notes-APK
+          path: artifacts/OWA-Notes.apk
+          if-no-files-found: error

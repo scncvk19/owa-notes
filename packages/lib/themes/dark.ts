@@ -1,7 +1,7 @@
 import { Theme, ThemeAppearance } from './type';
 import lightTheme from './light';
 
-// This is the default dark theme in Joplin
+// OWA Notes default dark theme
 const theme: Theme = {
 	...lightTheme,
 
@@ -9,61 +9,61 @@ const theme: Theme = {
 
 	// Color scheme "1" is the basic one, like used to display the note
 	// content. It's basically dark gray text on white background
-	backgroundColor: '#1D2024',
-	backgroundColorTransparent: 'rgba(255,255,255,0.9)',
-	oddBackgroundColor: '#141517',
-	color: '#dddddd',
+	backgroundColor: '#1F2421',
+	backgroundColorTransparent: 'rgba(31,36,33,0.92)',
+	oddBackgroundColor: '#191D1B',
+	color: '#ECEDEB',
 	colorError: '#ff4444',
 	colorCorrect: '#72b972',
 	colorWarn: '#9A5B00',
 	colorWarnUrl: '#ffff82',
-	colorFaded: '#999999', // For less important text
-	dividerColor: '#555555',
-	selectedColor: '#616161',
-	urlColor: 'rgb(166,166,255)',
+	colorFaded: '#A7ADA8', // For less important text
+	dividerColor: '#3D4841',
+	selectedColor: '#3A463F',
+	urlColor: '#B7CFBE',
 	colorErrorSelected: '#FFD7D7',
 
 	// Color scheme "2" is used for the sidebar. It's white text over
 	// dark blue background.
-	backgroundColor2: '#181A1D',
+	backgroundColor2: '#26332B',
 	color2: '#ffffff',
-	selectedColor2: '#013F74',
+	selectedColor2: '#4F6D5A',
 	colorError2: '#ff6c6c',
-	colorPublished2: '#789FE9',
-	colorWarn2: '#ffcb81',
-	colorWarn3: '#ffcb81',
+	colorPublished2: '#D3B77B',
+	colorWarn2: '#E0C07A',
+	colorWarn3: '#E0C07A',
 	backgroundColorTransparent2: 'rgba(255, 255, 255, 0.1)',
 
 	// Color scheme "3" is used for the config screens for example/
 	// It's dark text over gray background.
-	backgroundColor3: '#2E3138',
-	backgroundColorHover3: '#4E4E4E',
+	backgroundColor3: '#262D28',
+	backgroundColorHover3: '#36433B',
 	color3: '#dddddd',
 
 	// Color scheme "4" is used for secondary-style buttons. It makes a white
 	// button with blue text.
-	backgroundColor4: '#1D2024',
-	color4: '#789FE9',
-	backgroundColor4Dimmed: '#303543',
+	backgroundColor4: '#1F2421',
+	color4: '#AFC8B7',
+	backgroundColor4Dimmed: '#313A34',
 
-	raisedBackgroundColor: '#474747',
+	raisedBackgroundColor: '#36413A',
 	raisedColor: '#ffffff',
-	searchMarkerBackgroundColor: '#F7D26E',
+	searchMarkerBackgroundColor: '#C7A76C',
 	searchMarkerColor: 'black',
 
-	warningBackgroundColor: '#013F74',
+	warningBackgroundColor: '#5A4930',
 	destructiveColor: '#F07777',
 
-	tableBackgroundColor: 'rgb(40, 41, 42)',
-	codeBackgroundColor: 'rgb(47, 48, 49)',
-	codeBorderColor: 'rgb(70, 70, 70)',
+	tableBackgroundColor: '#292F2B',
+	codeBackgroundColor: '#2E3530',
+	codeBorderColor: '#465149',
 	codeColor: '#ffffff',
 
 	codeMirrorTheme: 'material-darker',
 	codeThemeCss: 'atom-one-dark-reasonable.css',
 
-	headerBackgroundColor: '#2D3136',
-	textSelectionColor: '#00AEFF',
+	headerBackgroundColor: '#27302A',
+	textSelectionColor: '#7D8F69',
 };
 
 export default theme;

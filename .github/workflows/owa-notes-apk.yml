@@ -1,0 +1,74 @@
+name: OWA Notes Android APK
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - .github/workflows/owa-notes-apk.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout OWA branding branch
+        uses: actions/checkout@v6
+        with:
+          ref: owa-branding
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet || true
+          sudo rm -rf /usr/share/swift || true
+          sudo rm -rf /opt/ghc || true
+          sudo rm -rf /opt/hostedtoolcache/CodeQL || true
+          sudo rm -rf /usr/local/share/boost || true
+          sudo rm -rf /usr/local/share/powershell || true
+          docker system prune -af || true
+          df -h /
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update || true
+          sudo apt-get install -y libsecret-1-dev
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "20"
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: yarn
+
+      - uses: ./.github/workflows/shared/install-yarn
+
+      - name: Install dependencies
+        run: |
+          source "${GITHUB_WORKSPACE}/.github/scripts/retry.sh"
+          retry yarn install
+        env:
+          SKIP_ONENOTE_CONVERTER_BUILD: 1
+
+      - name: Assemble APK
+        run: |
+          cd packages/app-mobile/android
+          sed -i -- 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/' app/build.gradle
+          ./gradlew assembleRelease
+
+      - name: Prepare artifact
+        run: |
+          mkdir -p artifacts
+          cp packages/app-mobile/android/app/build/outputs/apk/release/app-release.apk artifacts/OWA-Notes.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: OWA-Notes-APK
+          path: artifacts/OWA-Notes.apk
+          if-no-files-found: error

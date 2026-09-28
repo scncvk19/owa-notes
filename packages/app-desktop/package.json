@@ -1,7 +1,7 @@
 {
   "name": "@joplin/app-desktop",
   "version": "3.7.21",
-  "description": "Joplin for Desktop",
+  "description": "OWA Notes for Desktop",
   "main": "main.bundle.js",
   "private": true,
   "scripts": {
@@ -32,7 +32,7 @@
   "build": {
     "appId": "net.cozic.joplin-desktop",
     "compression": "normal",
-    "productName": "Joplin",
+    "productName": "OWA Notes",
     "npmRebuild": false,
     "afterSign": "./tools/notarizeMacApp.js",
     "extraResources": [
@@ -148,7 +148,7 @@
       ],
       "executableName": "joplin",
       "maintainer": "Joplin Team <no-reply@joplinapp.org>",
-      "artifactName": "Joplin-${version}.${ext}"
+      "artifactName": "OWA-Notes-${version}.${ext}"
     },
     "toolsets": {
       "appimage": "1.0.3"

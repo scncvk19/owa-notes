@@ -1,0 +1,135 @@
+name: OWA Notes - Upstream Joplin Sync
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly on Monday. GitHub schedules are evaluated in UTC.
+    - cron: '17 5 * * 1'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: owa-notes-upstream-sync
+  cancel-in-progress: false
+
+jobs:
+  sync-upstream:
+    name: Check and prepare upstream update
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out OWA branding branch
+        uses: actions/checkout@v6
+        with:
+          ref: owa-branding
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch Joplin upstream
+        run: |
+          git remote add upstream https://github.com/laurent22/joplin.git
+          git fetch upstream dev --prune
+          git fetch origin owa-branding --prune
+
+      - name: Check whether upstream has new commits
+        id: upstream
+        shell: bash
+        run: |
+          COUNT="$(git rev-list --count HEAD..upstream/dev)"
+          SHA="$(git rev-parse upstream/dev)"
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+          if [ "$COUNT" -eq 0 ]; then
+            echo "OWA Notes already contains the current Joplin dev branch."
+          else
+            echo "Found $COUNT upstream commit(s) not yet present in OWA Notes."
+          fi
+
+      - name: Merge upstream into review branch
+        if: steps.upstream.outputs.count != '0'
+        env:
+          UPDATE_BRANCH: automation/joplin-upstream-sync
+        shell: bash
+        run: |
+          git checkout -B "$UPDATE_BRANCH" origin/owa-branding
+
+          if ! git merge --no-ff --no-edit upstream/dev; then
+            echo "::error title=Upstream merge conflict::Joplin changed files that conflict with OWA Notes. No update was applied to owa-branding."
+            git status --short
+            git merge --abort || true
+            exit 1
+          fi
+
+      - name: Verify OWA branding is still present
+        if: steps.upstream.outputs.count != '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          grep -Fq '"productName": "OWA Notes"' packages/app-desktop/package.json
+          grep -Fq 'OWA Notes' packages/app-desktop/gui/Sidebar/Sidebar.tsx
+
+          grep -Fq '#4F6D5A' packages/lib/themes/light.ts
+          grep -Fq '#4F6D5A' packages/lib/themes/dark.ts
+
+          grep -Fq 'applicationId "labs.owa.notes"' packages/app-mobile/android/app/build.gradle
+          grep -Fq '<string name="app_name">OWA Notes</string>' packages/app-mobile/android/app/src/main/res/values/strings.xml
+          test -f packages/app-mobile/android/app/src/main/res/drawable/owa_logo.webp
+
+          grep -Fq 'OWA-Notes-APK' .github/workflows/build-android.yml
+
+          echo "OWA Notes branding checks passed."
+
+      - name: Push review branch
+        if: steps.upstream.outputs.count != '0'
+        env:
+          UPDATE_BRANCH: automation/joplin-upstream-sync
+        shell: bash
+        run: |
+          # Refresh the remote ref so force-with-lease never overwrites an
+          # unexpected human change on the automation branch.
+          git fetch origin "$UPDATE_BRANCH" || true
+          git push --force-with-lease origin "HEAD:$UPDATE_BRANCH"
+
+      - name: Create or update review pull request
+        if: steps.upstream.outputs.count != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPDATE_BRANCH: automation/joplin-upstream-sync
+          UPSTREAM_COUNT: ${{ steps.upstream.outputs.count }}
+          UPSTREAM_SHA: ${{ steps.upstream.outputs.sha }}
+        shell: bash
+        run: |
+          EXISTING_PR="$(gh pr list             --base owa-branding             --head "$UPDATE_BRANCH"             --state open             --json url             --jq '.[0].url')"
+
+          if [ -n "$EXISTING_PR" ]; then
+            echo "Updated existing upstream review PR: $EXISTING_PR"
+            exit 0
+          fi
+
+          cat > /tmp/pr-body.md <<EOF
+          ## Automated upstream update
+
+          This pull request was prepared automatically from the official Joplin `dev` branch.
+
+          - Upstream commits detected: **$UPSTREAM_COUNT**
+          - Upstream commit: `$UPSTREAM_SHA`
+          - Target branch: `owa-branding`
+          - OWA Notes branding guard: **passed**
+
+          ### Safety behavior
+
+          The workflow does **not** merge into `owa-branding` automatically.
+          If Git reports a merge conflict, or one of the OWA Notes branding checks fails, the workflow stops instead of changing the branded branch.
+
+          Review the changes and merge this PR only after the update looks correct.
+          EOF
+
+          gh pr create             --base owa-branding             --head "$UPDATE_BRANCH"             --title "Chore: Resolves #1: Sync upstream Joplin updates"             --body-file /tmp/pr-body.md

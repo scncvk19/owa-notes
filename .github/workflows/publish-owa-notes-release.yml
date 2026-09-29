@@ -3,46 +3,130 @@ name: Publish OWA Notes Android Pre-Release
 on:
   push:
     branches:
-      - dev
-    paths:
-      - .github/workflows/publish-owa-notes-release.yml
+      - owa-branding
+    paths-ignore:
+      - ".github/workflows/**"
   workflow_dispatch:
 
 permissions:
   contents: write
-  actions: read
 
 jobs:
-  publish:
+  build-apk:
     runs-on: ubuntu-latest
     steps:
-      - name: Download built APK artifact
-        uses: actions/download-artifact@v4
+      - name: Checkout OWA branding branch
+        uses: actions/checkout@v6
+        with:
+          ref: owa-branding
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet || true
+          sudo rm -rf /usr/share/swift || true
+          sudo rm -rf /opt/ghc || true
+          sudo rm -rf /opt/hostedtoolcache/CodeQL || true
+          sudo rm -rf /usr/local/share/boost || true
+          sudo rm -rf /usr/local/share/powershell || true
+          docker system prune -af || true
+          df -h /
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update || true
+          sudo apt-get install -y libsecret-1-dev
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "20"
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: yarn
+
+      - uses: ./.github/workflows/shared/install-yarn
+
+      - name: Install dependencies
+        run: |
+          source "${GITHUB_WORKSPACE}/.github/scripts/retry.sh"
+          retry yarn install
+        env:
+          SKIP_ONENOTE_CONVERTER_BUILD: 1
+
+      - name: Assemble APK
+        run: |
+          cd packages/app-mobile/android
+          sed -i -- 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/' app/build.gradle
+          ./gradlew assembleRelease
+
+      - name: Prepare artifact
+        run: |
+          mkdir -p artifacts
+          cp packages/app-mobile/android/app/build/outputs/apk/release/app-release.apk artifacts/OWA-Notes.apk
+          sha256sum artifacts/OWA-Notes.apk > artifacts/OWA-Notes.apk.sha256
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
         with:
           name: OWA-Notes-APK
-          path: release
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          repository: ${{ github.repository }}
-          run-id: 36477427827
+          path: |
+            artifacts/OWA-Notes.apk
+            artifacts/OWA-Notes.apk.sha256
+          if-no-files-found: error
 
-      - name: Verify APK
+      - name: Determine next alpha version
+        id: version
+        shell: bash
         run: |
-          test -f release/OWA-Notes.apk
-          ls -lh release/OWA-Notes.apk
-          sha256sum release/OWA-Notes.apk
+          set -euo pipefail
+          git fetch --tags --force
+
+          EXISTING_TAG="$(git tag --points-at "$GITHUB_SHA" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+-alpha
+ | sort -V | tail -n1 || true)"
+          if [ -n "$EXISTING_TAG" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "tag=$EXISTING_TAG" >> "$GITHUB_OUTPUT"
+            echo "Commit already released as $EXISTING_TAG"
+            exit 0
+          fi
+
+          LATEST_TAG="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*-alpha' | sort -V | tail -n1)"
+          if [ -z "$LATEST_TAG" ]; then
+            NEXT_TAG="v0.1.0-alpha"
+          else
+            VERSION="${LATEST_TAG#v}"
+            VERSION="${VERSION%-alpha}"
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+            NEXT_TAG="v${MAJOR}.${MINOR}.$((PATCH + 1))-alpha"
+          fi
+
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "tag=$NEXT_TAG" >> "$GITHUB_OUTPUT"
+          echo "Next release: $NEXT_TAG"
 
       - name: Create GitHub pre-release
+        if: steps.version.outputs.skip != 'true'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
         run: |
-          gh release create "v0.1.0-alpha" "release/OWA-Notes.apk#OWA-Notes.apk" \
-            --repo "${{ github.repository }}" \
-            --target "fdc9f0610055ceea90bfc2653d3b9cf212a52db0" \
-            --title "OWA Notes v0.1.0-alpha" \
+          gh release create "$RELEASE_TAG" \
+            "artifacts/OWA-Notes.apk#OWA-Notes.apk" \
+            "artifacts/OWA-Notes.apk.sha256#OWA-Notes.apk.sha256" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "OWA Notes $RELEASE_TAG" \
             --prerelease \
-            --notes "First OWA Notes Android test build.
+            --notes "Automated OWA Notes Android pre-release built from the current owa-branding branch.
+
+          Commit: $GITHUB_SHA
 
           Based on the open-source Joplin project.
           Licensed under GNU AGPL-3.0-or-later.
 
-          This is a pre-release build intended for testing. It is signed with a development/debug signing key and is not a production Play Store release."
+          This is a testing pre-release. The APK is signed with a development/debug signing key and is not a production Play Store release."

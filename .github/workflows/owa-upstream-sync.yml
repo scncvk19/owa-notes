@@ -80,7 +80,9 @@ jobs:
           grep -Fq '#4F6D5A' packages/lib/themes/dark.ts
 
           grep -Fq 'applicationId "labs.owa.notes"' packages/app-mobile/android/app/build.gradle
+          grep -Fq '@drawable/owa_logo' packages/app-mobile/android/app/src/main/AndroidManifest.xml
           grep -Fq '<string name="app_name">OWA Notes</string>' packages/app-mobile/android/app/src/main/res/values/strings.xml
+          grep -Fq "rootProject.name = 'OWA Notes'" packages/app-mobile/android/settings.gradle
           test -f packages/app-mobile/android/app/src/main/res/drawable/owa_logo.webp
 
           grep -Fq 'OWA-Notes-APK' .github/workflows/build-android.yml

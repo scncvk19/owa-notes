@@ -109,7 +109,7 @@ jobs:
           UPSTREAM_SHA: ${{ steps.upstream.outputs.sha }}
         shell: bash
         run: |
-          EXISTING_PR="$(gh pr list             --base owa-branding             --head "$UPDATE_BRANCH"             --state open             --json url             --jq '.[0].url')"
+          EXISTING_PR="$(gh pr list             --repo "$GITHUB_REPOSITORY"             --base owa-branding             --head "$UPDATE_BRANCH"             --state open             --json url             --jq '.[0].url')"
 
           if [ -n "$EXISTING_PR" ]; then
             echo "Updated existing upstream review PR: $EXISTING_PR"
@@ -134,4 +134,4 @@ jobs:
           Review the changes and merge this PR only after the update looks correct.
           EOF
 
-          gh pr create             --base owa-branding             --head "$UPDATE_BRANCH"             --title "Chore: Resolves #1: Sync upstream Joplin updates"             --body-file /tmp/pr-body.md
+          gh pr create             --repo "$GITHUB_REPOSITORY"             --base owa-branding             --head "$UPDATE_BRANCH"             --title "Chore: Resolves #1: Sync upstream Joplin updates"             --body-file /tmp/pr-body.md

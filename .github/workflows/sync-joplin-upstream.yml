@@ -1,0 +1,183 @@
+name: Sync Joplin upstream into OWA branding
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 5 * * 1'
+  push:
+    branches:
+      - dev
+    paths:
+      - .github/workflows/sync-joplin-upstream.yml
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: sync-joplin-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Check and prepare upstream update
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout OWA branding branch
+        uses: actions/checkout@v6
+        with:
+          ref: owa-branding
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch official Joplin dev branch
+        run: |
+          git remote remove upstream 2>/dev/null || true
+          git remote add upstream https://github.com/laurent22/joplin.git
+          git fetch --no-tags upstream dev
+
+      - name: Check whether an update is available
+        id: upstream
+        shell: bash
+        run: |
+          UPSTREAM_SHA="$(git rev-parse upstream/dev)"
+          SHORT_SHA="$(git rev-parse --short=12 upstream/dev)"
+          echo "sha=$UPSTREAM_SHA" >> "$GITHUB_OUTPUT"
+          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+          echo "branch=automation/joplin-upstream-$SHORT_SHA" >> "$GITHUB_OUTPUT"
+
+          if git merge-base --is-ancestor upstream/dev HEAD; then
+            echo "update_needed=false" >> "$GITHUB_OUTPUT"
+            echo "OWA branding already contains upstream Joplin $SHORT_SHA."
+          else
+            echo "update_needed=true" >> "$GITHUB_OUTPUT"
+            echo "New upstream Joplin changes found: $SHORT_SHA."
+          fi
+
+      - name: Merge upstream into temporary update branch
+        if: steps.upstream.outputs.update_needed == 'true'
+        id: merge
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPDATE_BRANCH: ${{ steps.upstream.outputs.branch }}
+          SHORT_SHA: ${{ steps.upstream.outputs.short_sha }}
+        run: |
+          git switch -c "$UPDATE_BRANCH"
+
+          set +e
+          git merge --no-ff --no-edit upstream/dev
+          MERGE_EXIT=$?
+          set -e
+
+          if [ "$MERGE_EXIT" -ne 0 ]; then
+            CONFLICTS="$(git diff --name-only --diff-filter=U || true)"
+            git merge --abort || true
+
+            printf '%s\n' "$CONFLICTS" > /tmp/conflicts.txt
+            {
+              echo "An automatic Joplin upstream merge into \`owa-branding\` failed."
+              echo
+              echo "Upstream commit: \`$SHORT_SHA\`"
+              echo
+              echo "Conflicting files:"
+              sed 's/^/- `/' /tmp/conflicts.txt | sed 's/$/`/'
+              echo
+              echo "No OWA branch was changed. Resolve these conflicts manually, then run the workflow again."
+            } > /tmp/issue-body.md
+
+            if ! gh issue list --state open --search "$SHORT_SHA in:title" --json title --jq '.[].title' | grep -Fq "$SHORT_SHA"; then
+              gh issue create \
+                --title "Upstream sync conflict: $SHORT_SHA" \
+                --body-file /tmp/issue-body.md
+            fi
+
+            echo "Automatic merge stopped because conflicts were detected."
+            exit 1
+          fi
+
+      - name: Verify OWA branding survived the merge
+        if: steps.upstream.outputs.update_needed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -f packages/app-mobile/android/app/src/main/res/drawable/owa_logo.webp
+          grep -Fq '<string name="app_name">OWA Notes</string>' packages/app-mobile/android/app/src/main/res/values/strings.xml
+          grep -Fq '<string name="default_notification_channel_id">labs.owa.notes.notification</string>' packages/app-mobile/android/app/src/main/res/values/strings.xml
+          grep -Fq 'applicationId "labs.owa.notes"' packages/app-mobile/android/app/build.gradle
+          grep -Fq 'android:icon="@drawable/owa_logo"' packages/app-mobile/android/app/src/main/AndroidManifest.xml
+          grep -Fq 'android:roundIcon="@drawable/owa_logo"' packages/app-mobile/android/app/src/main/AndroidManifest.xml
+
+          BRANDING_FILES=(
+            "packages/app-desktop/gui/Sidebar/Sidebar.tsx"
+            "packages/app-desktop/package.json"
+            "packages/app-mobile/android/app/build.gradle"
+            "packages/app-mobile/android/app/src/main/AndroidManifest.xml"
+            "packages/app-mobile/android/app/src/main/res/drawable/owa_logo.webp"
+            "packages/app-mobile/android/app/src/main/res/values/strings.xml"
+            "packages/app-mobile/android/settings.gradle"
+            "packages/lib/themes/dark.ts"
+            "packages/lib/themes/light.ts"
+          )
+
+          for file in "${BRANDING_FILES[@]}"; do
+            if [ ! -e "$file" ]; then
+              echo "Required OWA branding file is missing: $file"
+              exit 1
+            fi
+
+            if git diff --quiet upstream/dev -- "$file"; then
+              echo "OWA branding protection failed: $file no longer differs from upstream."
+              exit 1
+            fi
+          done
+
+          echo "OWA branding checks passed."
+
+      - name: Push update branch
+        if: steps.upstream.outputs.update_needed == 'true'
+        shell: bash
+        env:
+          UPDATE_BRANCH: ${{ steps.upstream.outputs.branch }}
+        run: |
+          git push --force-with-lease origin "HEAD:$UPDATE_BRANCH"
+
+      - name: Open pull request for manual review
+        if: steps.upstream.outputs.update_needed == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPDATE_BRANCH: ${{ steps.upstream.outputs.branch }}
+          SHORT_SHA: ${{ steps.upstream.outputs.short_sha }}
+          UPSTREAM_SHA: ${{ steps.upstream.outputs.sha }}
+        run: |
+          EXISTING_PR="$(gh pr list --state open --base owa-branding --head "$UPDATE_BRANCH" --json url --jq '.[0].url // empty')"
+
+          if [ -n "$EXISTING_PR" ]; then
+            echo "Pull request already exists: $EXISTING_PR"
+            exit 0
+          fi
+
+          cat > /tmp/pr-body.md <<EOF
+          Automated sync from the official Joplin \`dev\` branch into OWA Notes.
+
+          - Upstream commit: \`$UPSTREAM_SHA\`
+          - Target branch: \`owa-branding\`
+          - OWA branding guard checks: passed before PR creation
+          - Merge policy: manual review only
+
+          GitHub Actions on this pull request should run the existing Android/test workflows. Do not merge if branding or build checks fail.
+          EOF
+
+          gh pr create \
+            --base owa-branding \
+            --head "$UPDATE_BRANCH" \
+            --title "Sync Joplin upstream ($SHORT_SHA)" \
+            --body-file /tmp/pr-body.md

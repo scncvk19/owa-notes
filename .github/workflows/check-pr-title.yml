@@ -5,8 +5,8 @@ on:
 
 jobs:
   main:
-    # Skip the check entirely for these automation accounts.
-    if: github.event.pull_request.user.login != 'renovate[bot]'
+    # Skip Renovate and OWA's internal Joplin upstream-sync pull requests.
+    if: github.event.pull_request.user.login != 'renovate[bot]' && !startsWith(github.event.pull_request.head.ref, 'automation/joplin-upstream-')
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
